@@ -11,8 +11,8 @@ The project will use historical corporate financial data to measure this refinan
 ## Project Goals
 
 - Build a point-in-time dataset from publicly available corporate financial data
-- Engineer features representing funding gabs and refinancing dependence
-- Train and evaluate machine learning models using Python and scikit-learn/XGBoost
+- Engineer features representing funding gabs & refinancing dependence
+- Train & evaluate machine learning models using Python & scikit-learn/XGBoost
 - Interpret model predictions using SHAP
 - Backtest investment decisions based on predicted financial fragility
 - Develop the project as an end-to-end, reproducible ML pipeline
