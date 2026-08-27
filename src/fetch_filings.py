@@ -13,56 +13,96 @@ ocf_lookup = {
     if fact.concept == "us-gaap:NetCashProvidedByUsedInOperatingActivities"
 }
 
-quarterly_ocf = {}
+capex_lookup = {
+    (fact.accession, str(fact.period_end)): fact
+    for fact in all_facts
+    if fact.concept == "us-gaap:PaymentsToAcquirePropertyPlantAndEquipment"
+}
+
+debt_repayment_lookup = {
+    (fact.accession, str(fact.period_end)): fact
+    for fact in all_facts
+    if fact.concept == "us-gaap:RepaymentsOfLongTermDebt"
+}
+
+interest_paid_lookup = {
+    (fact.accession, str(fact.period_end)): fact
+    for fact in all_facts
+    if fact.concept == "us-gaap:InterestPaid"
+}
+
+interest_paid_net_lookup = {
+    (fact.accession, str(fact.period_end)): fact
+    for fact in all_facts
+    if fact.concept == "us-gaap:InterestPaidNet"
+}
 
 
-def get_reported_ocf(filing, ocf_lookup):
+def get_reported_value(filing, fact_lookup):
     key = (
         filing.accession_no,
         str(filing.period_of_report)
     )
 
-    ocf_fact = ocf_lookup.get(key)
+    fact = fact_lookup.get(key)
 
-    if ocf_fact is None:
+    if fact is None:
         return None
 
     return (
-        ocf_fact.fiscal_year, 
-        ocf_fact.fiscal_period, 
-        ocf_fact.numeric_value
+        fact.fiscal_year, 
+        fact.fiscal_period, 
+        fact.numeric_value
     )
     
-reported_ocf = {}
+def build_quarterly_series(filings, fact_lookup):
+    reported_values = {}
 
-for filing in filings:
-    result = get_reported_ocf(filing, ocf_lookup)
+    for filing in filings:
+        result = get_reported_value(filing, fact_lookup)
 
-    if result is None:
-        continue
+        if result is None:
+            continue
 
-    fiscal_year, fiscal_period, ocf = result
+        fiscal_year, fiscal_period, value = result
 
-    reported_ocf[(fiscal_year, fiscal_period)] = ocf
+        reported_values[(fiscal_year, fiscal_period)] = value
 
-years = sorted({year for year, period in reported_ocf})
+    quarterly_values = {}
 
-for year in years:
-    q1_ytd = reported_ocf.get((year, "Q1"))
-    q2_ytd = reported_ocf.get((year, "Q2"))
-    q3_ytd = reported_ocf.get((year, "Q3"))
-    full_year = reported_ocf.get((year, "FY"))
+    years = sorted({year for year, period in reported_values})
 
-    if q1_ytd is not None:
-        quarterly_ocf[(year, "Q1")] = q1_ytd
+    for year in years:
+        q1_ytd = reported_values.get((year, "Q1"))
+        q2_ytd = reported_values.get((year, "Q2"))
+        q3_ytd = reported_values.get((year, "Q3"))
+        full_year = reported_values.get((year, "FY"))
 
-    if q1_ytd is not None and q2_ytd is not None:
-        quarterly_ocf[(year, "Q2")] = q2_ytd - q1_ytd
+        if q1_ytd is not None:
+            quarterly_values[(year, "Q1")] = q1_ytd
 
-    if q2_ytd is not None and q3_ytd is not None:
-        quarterly_ocf[(year, "Q3")] = q3_ytd - q2_ytd
+        if q1_ytd is not None and q2_ytd is not None:
+            quarterly_values[(year, "Q2")] = q2_ytd - q1_ytd
 
-    if q3_ytd is not None and full_year is not None:
-        quarterly_ocf[(year, "Q4")] = full_year - q3_ytd
+        if q2_ytd is not None and q3_ytd is not None:
+            quarterly_values[(year, "Q3")] = q3_ytd - q2_ytd
 
-print(quarterly_ocf)
+        if q3_ytd is not None and full_year is not None:
+            quarterly_values[(year, "Q4")] = full_year - q3_ytd
+
+    return quarterly_values
+
+quarterly_ocf = build_quarterly_series(filings, ocf_lookup)
+# print(quarterly_ocf)
+
+quarterly_capex = build_quarterly_series(filings, capex_lookup)
+# print(quarterly_capex)
+
+quarterly_debt_repayments = build_quarterly_series(filings, debt_repayment_lookup)
+# print(quarterly_debt_repayments)
+
+quarterly_interest_paid = build_quarterly_series(filings, interest_paid_lookup)
+# print(quarterly_interest_paid)
+
+quarterly_interest_paid_net = build_quarterly_series(filings, interest_paid_net_lookup)
+# print(quarterly_interest_paid_net)
