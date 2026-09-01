@@ -74,6 +74,25 @@ def build_quarterly_series(filings, fact_lookup):
 
     return quarterly_values
 
+def build_snapshot_series(filings, fact_lookup):
+    snapshot_values = {}
+
+    for filing in filings:
+        key = (filing.accession_no, str(filing.period_of_report))
+        fact = fact_lookup.get(key)
+
+        if fact is None:
+            continue
+
+        quarter = "Q4" if fact.fiscal_period == "FY" else fact.fiscal_period
+
+        snapshot_values[(fact.fiscal_year, quarter)] = {
+            "value": fact.numeric_value,
+            "filing_date": str(filing.filing_date)
+        }
+
+    return snapshot_values
+
 def build_fact_lookup(all_facts, concept):
     fact_lookup = {}
 
@@ -89,6 +108,29 @@ def build_fact_lookup(all_facts, concept):
 
     return fact_lookup
 
+def build_instant_fact_lookup(all_facts, concept):
+    fact_lookup = {}
+
+    for fact in all_facts:
+        if fact.concept != concept:
+            continue
+
+        key = (fact.accession, str(fact.period_end))
+
+        if key not in fact_lookup:
+            fact_lookup[key] = fact
+
+    return fact_lookup
+
+def build_first_available_fact_lookup(all_facts, concepts):
+    for concept in concepts:
+        fact_lookup = build_fact_lookup(all_facts, concept)
+
+        if fact_lookup:
+            return fact_lookup
+
+    return {}
+
 def build_company_dataset(ticker):
     company = Company(ticker)
     filings = company.get_filings(form=["10-K", "10-Q"])
@@ -96,15 +138,26 @@ def build_company_dataset(ticker):
 
     ocf_lookup = build_fact_lookup(all_facts, "us-gaap:NetCashProvidedByUsedInOperatingActivities")
     capex_lookup = build_fact_lookup(all_facts, "us-gaap:PaymentsToAcquirePropertyPlantAndEquipment")
-    debt_repayment_lookup = build_fact_lookup(all_facts, "us-gaap:RepaymentsOfLongTermDebt")
+    debt_repayment_lookup = build_first_available_fact_lookup(all_facts, [
+    "us-gaap:RepaymentsOfLongTermDebt",
+    "us-gaap:RepaymentsOfDebtMaturingInMoreThanThreeMonths"
+    ])
     interest_paid_lookup = build_fact_lookup(all_facts, "us-gaap:InterestPaid")
     interest_paid_net_lookup = build_fact_lookup(all_facts, "us-gaap:InterestPaidNet")
+    taxes_paid_lookup = build_fact_lookup(all_facts, "us-gaap:IncomeTaxesPaidNet")
+    cash_lookup = build_instant_fact_lookup(all_facts, "us-gaap:CashAndCashEquivalentsAtCarryingValue")
+    short_term_investments_lookup = build_instant_fact_lookup(all_facts, "us-gaap:ShortTermInvestments")
+    liquid_assets_lookup = build_instant_fact_lookup(all_facts, "us-gaap:CashCashEquivalentsAndShortTermInvestments")
 
     quarterly_ocf = build_quarterly_series(filings, ocf_lookup)
     quarterly_capex = build_quarterly_series(filings, capex_lookup)
     quarterly_debt_repayments = build_quarterly_series(filings, debt_repayment_lookup)
     quarterly_interest_paid = build_quarterly_series(filings, interest_paid_lookup)
     quarterly_interest_paid_net = build_quarterly_series(filings, interest_paid_net_lookup)
+    quarterly_taxes_paid = build_quarterly_series(filings, taxes_paid_lookup)
+    quarterly_cash = build_snapshot_series(filings, cash_lookup)
+    quarterly_short_term_investments = build_snapshot_series(filings, short_term_investments_lookup)
+    quarterly_liquid_assets = build_snapshot_series(filings, liquid_assets_lookup)
 
     all_quarters = sorted(
         set(quarterly_ocf)
@@ -112,6 +165,10 @@ def build_company_dataset(ticker):
         | set(quarterly_debt_repayments)
         | set(quarterly_interest_paid)
         | set(quarterly_interest_paid_net)
+        | set(quarterly_taxes_paid)
+        | set(quarterly_cash)
+        | set(quarterly_short_term_investments)
+        | set(quarterly_liquid_assets)
     )
 
     rows = []
@@ -126,7 +183,11 @@ def build_company_dataset(ticker):
             "capex": quarterly_capex.get((fiscal_year, quarter), {}).get("value"),
             "debt_repayments": quarterly_debt_repayments.get((fiscal_year, quarter), {}).get("value"),
             "interest_paid": quarterly_interest_paid.get((fiscal_year, quarter), {}).get("value"),
-            "interest_paid_net": quarterly_interest_paid_net.get((fiscal_year, quarter), {}).get("value")
+            "interest_paid_net": quarterly_interest_paid_net.get((fiscal_year, quarter), {}).get("value"),
+            "taxes_paid": quarterly_taxes_paid.get((fiscal_year, quarter), {}).get("value"),
+            "cash": quarterly_cash.get((fiscal_year, quarter), {}).get("value"),
+            "short_term_investments": quarterly_short_term_investments.get((fiscal_year, quarter), {}).get("value"),
+            "liquid_assets": quarterly_liquid_assets.get((fiscal_year, quarter), {}).get("value")
         })
 
     df = pd.DataFrame(rows)
