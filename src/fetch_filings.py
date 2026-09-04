@@ -142,28 +142,65 @@ def build_company_dataset(ticker):
     filings = company.get_filings(form=["10-K", "10-Q"])
     all_facts = company.facts.get_all_facts()
 
-    ocf_lookup = build_duration_lookup(all_facts, "us-gaap:NetCashProvidedByUsedInOperatingActivities")
-    capex_lookup = build_duration_lookup(all_facts, "us-gaap:PaymentsToAcquirePropertyPlantAndEquipment")
+    ocf_lookup = build_duration_lookup(
+        all_facts,
+        "us-gaap:NetCashProvidedByUsedInOperatingActivities"
+    )
+
+    capex_lookup = build_duration_lookup(
+        all_facts,
+        "us-gaap:PaymentsToAcquirePropertyPlantAndEquipment"
+    )
 
     debt_repayment_lookup = select_first_available_lookup(all_facts, [
         "us-gaap:RepaymentsOfLongTermDebt",
         "us-gaap:RepaymentsOfDebtMaturingInMoreThanThreeMonths"
     ], build_duration_lookup)
 
-    interest_paid_lookup = build_duration_lookup(all_facts, "us-gaap:InterestPaid")
-    interest_paid_net_lookup = build_duration_lookup(all_facts, "us-gaap:InterestPaidNet")
-    taxes_paid_lookup = build_duration_lookup(all_facts, "us-gaap:IncomeTaxesPaidNet")
+    interest_paid_lookup = build_duration_lookup(
+        all_facts,
+        "us-gaap:InterestPaid"
+    )
 
-    cash_lookup = build_snapshot_lookup(all_facts, "us-gaap:CashAndCashEquivalentsAtCarryingValue")
+    interest_paid_net_lookup = build_duration_lookup(
+        all_facts,
+        "us-gaap:InterestPaidNet"
+    )
+
+    taxes_paid_lookup = build_duration_lookup(
+        all_facts,
+        "us-gaap:IncomeTaxesPaidNet"
+    )
+
+    cash_lookup = build_snapshot_lookup(
+        all_facts,
+        "us-gaap:CashAndCashEquivalentsAtCarryingValue"
+    )
 
     short_term_investments_lookup = select_first_available_lookup(all_facts, [
         "us-gaap:ShortTermInvestments",
         "us-gaap:MarketableSecuritiesCurrent"
     ], build_snapshot_lookup)
 
-    liquid_assets_lookup = build_snapshot_lookup(all_facts, "us-gaap:CashCashEquivalentsAndShortTermInvestments")
-    current_long_term_debt_lookup = build_snapshot_lookup(all_facts, "us-gaap:LongTermDebtCurrent")
-    debt_maturities_next_12m_lookup = build_snapshot_lookup(all_facts, "us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInNextTwelveMonths")
+    liquid_assets_lookup = build_snapshot_lookup(
+        all_facts,
+        "us-gaap:CashCashEquivalentsAndShortTermInvestments"
+    )
+
+    current_long_term_debt_lookup = build_snapshot_lookup(
+        all_facts,
+        "us-gaap:LongTermDebtCurrent"
+    )
+
+    commercial_paper_lookup = build_snapshot_lookup(
+        all_facts,
+        "us-gaap:CommercialPaper"
+    )
+
+    debt_maturities_next_12m_lookup = build_snapshot_lookup(
+        all_facts,
+        "us-gaap:LongTermDebtMaturitiesRepaymentsOfPrincipalInNextTwelveMonths"
+    )
 
     quarterly_ocf = build_quarterly_series(filings, ocf_lookup)
     quarterly_capex = build_quarterly_series(filings, capex_lookup)
@@ -176,14 +213,29 @@ def build_company_dataset(ticker):
     quarterly_short_term_investments = build_snapshot_series(filings, short_term_investments_lookup)
     quarterly_liquid_assets = build_snapshot_series(filings, liquid_assets_lookup)
     quarterly_current_long_term_debt = build_snapshot_series(filings, current_long_term_debt_lookup)
+    quarterly_commercial_paper = build_snapshot_series(filings, commercial_paper_lookup)
     quarterly_debt_maturities_next_12m = build_snapshot_series(filings, debt_maturities_next_12m_lookup)
 
     for key in set(quarterly_cash) & set(quarterly_short_term_investments):
         if key not in quarterly_liquid_assets:
             quarterly_liquid_assets[key] = {
-                "value": quarterly_cash[key]["value"] + quarterly_short_term_investments[key]["value"],
+                "value": (
+                    quarterly_cash[key]["value"]
+                    + quarterly_short_term_investments[key]["value"]
+                ),
                 "filing_date": quarterly_cash[key]["filing_date"]
             }
+
+    quarterly_near_term_debt = {}
+
+    for key in set(quarterly_current_long_term_debt) & set(quarterly_commercial_paper):
+        quarterly_near_term_debt[key] = {
+            "value": (
+                quarterly_current_long_term_debt[key]["value"]
+                + quarterly_commercial_paper[key]["value"]
+            ),
+            "filing_date": quarterly_current_long_term_debt[key]["filing_date"]
+        }
 
     all_quarters = sorted(
         set(quarterly_ocf)
@@ -196,6 +248,8 @@ def build_company_dataset(ticker):
         | set(quarterly_short_term_investments)
         | set(quarterly_liquid_assets)
         | set(quarterly_current_long_term_debt)
+        | set(quarterly_commercial_paper)
+        | set(quarterly_near_term_debt)
         | set(quarterly_debt_maturities_next_12m)
     )
 
@@ -217,6 +271,8 @@ def build_company_dataset(ticker):
             "short_term_investments": quarterly_short_term_investments.get((fiscal_year, quarter), {}).get("value"),
             "liquid_assets": quarterly_liquid_assets.get((fiscal_year, quarter), {}).get("value"),
             "current_long_term_debt": quarterly_current_long_term_debt.get((fiscal_year, quarter), {}).get("value"),
+            "commercial_paper": quarterly_commercial_paper.get((fiscal_year, quarter), {}).get("value"),
+            "near_term_debt": quarterly_near_term_debt.get((fiscal_year, quarter), {}).get("value"),
             "debt_maturities_next_12m": quarterly_debt_maturities_next_12m.get((fiscal_year, quarter), {}).get("value")
         })
 
@@ -229,6 +285,7 @@ def build_company_dataset(ticker):
     return df
 
 
-df = build_company_dataset("MSFT")
+if __name__ == "__main__":
+    df = build_company_dataset("MSFT")
 
-print(df.tail(20).to_string(index=False))
+    print(df.tail(20).to_string(index=False))
