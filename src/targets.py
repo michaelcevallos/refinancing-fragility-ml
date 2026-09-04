@@ -5,8 +5,11 @@ from fetch_filings import build_company_dataset
 from features import build_features
 
 
-def get_price_on_or_after(prices, date):
-    available_prices = prices.loc[prices.index >= date]
+def get_price_on_or_after(prices, date, max_days=7):
+    available_prices = prices.loc[
+        (prices.index >= date)
+        & (prices.index <= date + pd.Timedelta(days=max_days))
+    ]
 
     if available_prices.empty:
         return None
